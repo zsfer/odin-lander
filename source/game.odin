@@ -3,14 +3,17 @@ package game
 import "core:fmt"
 import "core:math/linalg"
 import "core:math/noise"
+import "core:math/rand"
 import "core:slice"
 import "core:strings"
 import rl "vendor:raylib"
 
 LUNAR_GRAVITY :: 1.6
-LANDING_ZONES_COUNT :: 4
+LANDING_ZONES_COUNT :: 6
 WORLD_POINTS :: 40
-WORLD_SEED :: 104432
+
+WIN_MAX_ANGLE :: 8
+WIN_MAX_SPEED :: 10
 
 Lander :: struct {
 	verts: [6]VEC2,
@@ -104,12 +107,13 @@ update_lander :: proc(using l: ^Lander) {
 generate_world :: proc(landing_zones: ^[dynamic]int) -> [WORLD_POINTS]VEC2 {
 	points: [WORLD_POINTS]VEC2 = {}
 	start_y := f32(rl.GetScreenHeight()) * 0.7
+	seed := rand.int63()
 
 	for i in 0 ..< WORLD_POINTS {
 		x := f32(i) * f32(rl.GetScreenWidth()) / f32(WORLD_POINTS)
 		y := start_y
 
-		n := noise.noise_2d(WORLD_SEED, {f64(x), f64(y)}) * 0.2
+		n := noise.noise_2d(seed, {f64(x), f64(y)}) * 0.2
 		scaled_y := y * n + start_y
 
 		if i % (WORLD_POINTS / LANDING_ZONES_COUNT) == 0 && i != 0 {
@@ -157,9 +161,10 @@ check_collisions :: proc(l: ^Lander, world: ^[WORLD_POINTS]VEC2, lz: ^[dynamic]i
 		if idx < WORLD_POINTS - 1 &&
 		   rl.CheckCollisionCircleLine(l.pos, LANDER_SCALE, world_point, world[idx + 1]) {
 			gs.is_landed = true
-
 			// landed inside LZ
-			if slice.contains(lz[:], idx + 1) && abs(l.angle) < 8 && rl.Vector2Length(l.vel) < 5 {
+			if slice.contains(lz[:], idx + 1) &&
+			   abs(l.angle) < WIN_MAX_ANGLE &&
+			   rl.Vector2Length(l.vel) < WIN_MAX_SPEED {
 				l.angle = 0
 				l.vel = {}
 				gs.win_state = .Win
@@ -219,6 +224,10 @@ init :: proc(title: cstring) {
 }
 
 update :: proc() {
+	if rl.IsKeyPressed(.R) {
+		gs.world = generate_world(&gs.landing_zones)
+	}
+
 	update_lander(&gs.lander)
 	check_collisions(&gs.lander, &gs.world, &gs.landing_zones)
 }
