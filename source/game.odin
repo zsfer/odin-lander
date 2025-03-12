@@ -15,11 +15,16 @@ WORLD_POINTS :: 40
 WIN_MAX_ANGLE :: 8
 WIN_MAX_SPEED :: 10
 
+KB_ROT_POS :: rl.KeyboardKey.D
+KB_ROT_NEG :: rl.KeyboardKey.A
+KB_THRUST :: rl.KeyboardKey.W
+
 Lander :: struct {
 	verts: [6]VEC2,
 	pos:   VEC2,
 	angle: f32,
 	vel:   VEC2,
+	fuel:  f32,
 }
 
 LANDER_SCALE :: 10
@@ -70,11 +75,10 @@ draw_lander :: proc(using l: ^Lander) {
 
 	rl.DrawLineStrip(auto_cast &verts, 6, rl.WHITE)
 	rl.DrawLineStrip(auto_cast &thrusters, 4, rl.WHITE)
-	if rl.IsKeyDown(.UP) {
+	if rl.IsKeyDown(KB_THRUST) {
 		rl.DrawLineStrip(auto_cast &thrust, 5, rl.ORANGE)
 	}
-	rl.DrawText(fmt.caprint(vel), 10, 10, 8, rl.WHITE)
-	rl.DrawText(fmt.caprint(angle), 10, 20, 12, rl.WHITE)
+
 }
 
 update_lander :: proc(using l: ^Lander) {
@@ -83,16 +87,18 @@ update_lander :: proc(using l: ^Lander) {
 
 	vel.y += LUNAR_GRAVITY * dt
 
-	if rl.IsKeyDown(.RIGHT) && angle < 90 {
+	if rl.IsKeyDown(KB_ROT_POS) && angle < 90 {
 		angle += LANDER_ROT_SPEED * dt
-	} else if rl.IsKeyDown(.LEFT) && angle > -90 {
+	} else if rl.IsKeyDown(KB_ROT_NEG) && angle > -90 {
 		angle += -LANDER_ROT_SPEED * dt
 	}
 	angle = linalg.clamp(f32(-90.0), f32(90.0), angle)
 
-	if rl.IsKeyDown(.UP) {
+	if rl.IsKeyDown(KB_THRUST) {
 		thrust_dir := VEC2{linalg.sin(angle * rl.DEG2RAD), -linalg.cos(angle * rl.DEG2RAD)}
 		vel += thrust_dir * 10 * dt
+
+		fuel -= 0.7 * dt
 	}
 
 	pos += vel * dt
@@ -180,6 +186,10 @@ check_collisions :: proc(l: ^Lander, world: ^[WORLD_POINTS]VEC2, lz: ^[dynamic]i
 
 
 draw_ui :: proc(using g: ^Game_State) {
+	rl.DrawText(fmt.caprint("ROT", int(lander.angle)), 20, 20, 24, rl.WHITE)
+	rl.DrawText(fmt.caprint("SPD", int(rl.Vector2Length(lander.vel))), 20, 50, 24, rl.WHITE)
+	rl.DrawText(fmt.caprint("FUL", int(lander.fuel)), 20, 75, 24, rl.WHITE)
+
 	if is_landed {
 		col := win_state == .Win ? rl.GREEN : rl.RED
 		text := strings.clone_to_cstring(game_over_text)
@@ -197,6 +207,7 @@ Win_State :: enum {
 	Win,
 	Lose,
 }
+
 Game_State :: struct {
 	lander:         Lander,
 	world:          [WORLD_POINTS]VEC2,
@@ -211,25 +222,53 @@ gs: ^Game_State
 init :: proc(title: cstring) {
 	gs = new(Game_State)
 
-	gs.lander = {
-		pos   = {50, 50}, // START POS
-		angle = -90,
-		vel   = {30, 5},
-	}
-	gs.landing_zones = {}
-
-	gs.world = generate_world(&gs.landing_zones)
-
+	restart_game(gs)
 	rl.EnableCursor()
 }
 
+restart_count := 0
+restart_game :: proc(gs: ^Game_State, fuel: f32 = 300) {
+	growth := linalg.pow(f32(1.0) + f32(0.5), f32(restart_count))
+
+	gs.lander = {
+		pos   = {50, 50}, // START POS
+		angle = -90,
+		vel   = VEC2{30.0, 5.0} * growth,
+		fuel  = fuel,
+	}
+	gs.is_landed = false
+	gs.game_over_text = ""
+	start_restart = false
+
+	gs.landing_zones = {}
+	gs.world = generate_world(&gs.landing_zones)
+
+	restart_count += 1
+}
+
+start_restart := false
+restart_timer := f32(5)
 update :: proc() {
 	if rl.IsKeyPressed(.R) {
-		gs.world = generate_world(&gs.landing_zones)
+		restart_game(gs)
 	}
 
 	update_lander(&gs.lander)
 	check_collisions(&gs.lander, &gs.world, &gs.landing_zones)
+
+	if gs.is_landed && !start_restart {
+		start_restart = true
+		restart_timer = 5
+	}
+
+	if start_restart {
+		restart_timer -= rl.GetFrameTime()
+
+		if restart_timer <= 0 {
+			start_restart = false
+			restart_game(gs, gs.lander.fuel)
+		}
+	}
 }
 
 draw :: proc() {
@@ -242,6 +281,7 @@ draw :: proc() {
 	} else {
 		draw_lander(&gs.lander)
 	}
+
 	draw_ui(gs)
 
 
