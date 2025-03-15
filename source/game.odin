@@ -114,6 +114,7 @@ generate_world :: proc(landing_zones: ^[dynamic]int) -> [WORLD_POINTS]VEC2 {
 	points: [WORLD_POINTS]VEC2 = {}
 	start_y := f32(rl.GetScreenHeight()) * 0.7
 	seed := rand.int63()
+	expl_scale = f32(5) * LANDER_SCALE
 
 	for i in 0 ..< WORLD_POINTS {
 		x := f32(i) * f32(rl.GetScreenWidth()) / f32(WORLD_POINTS)
@@ -233,7 +234,7 @@ restart_game :: proc(gs: ^Game_State, fuel: f32 = 300) {
 	gs.lander = {
 		pos   = {50, 50}, // START POS
 		angle = -90,
-		vel   = VEC2{30.0, 5.0} * growth,
+		vel   = VEC2{30.0, 10.0} * growth,
 		fuel  = fuel,
 	}
 	gs.is_landed = false
